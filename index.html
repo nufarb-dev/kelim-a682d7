@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>ארגז הכלים הרגשי</title>
+<style>
+  html,body{margin:0;height:100%;background:#F7EDE2;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#4F6F67}
+  .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+  .card{background:#fff;border:3px solid #F6BD60;border-radius:24px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:0 8px 30px rgba(79,111,103,.12)}
+  h1{margin:0 0 8px;font-size:28px}
+  p{margin:0 0 22px;font-size:17px;color:#4F6F67}
+  input[type=password]{width:100%;box-sizing:border-box;font-size:20px;padding:12px 14px;border:2px solid #84A59D;border-radius:14px;text-align:center;direction:ltr;outline:none}
+  input[type=password]:focus{border-color:#F6BD60}
+  label{display:flex;gap:8px;align-items:center;justify-content:center;margin:14px 0 0;font-size:15px}
+  button{margin-top:18px;width:100%;font-size:20px;font-weight:700;padding:12px;border:0;border-radius:14px;background:#84A59D;color:#fff;cursor:pointer}
+  button:disabled{opacity:.6;cursor:wait}
+  .err{color:#F28482;font-weight:700;min-height:22px;margin-top:12px;font-size:16px}
+</style>
+</head>
+<body>
+<div class="wrap"><form class="card" id="f">
+  <h1>ארגז הכלים הרגשי</h1>
+  <p>כדי להיכנס צריך סיסמה</p>
+  <input type="password" id="pw" autocomplete="current-password" autofocus>
+  <label><input type="checkbox" id="rem" checked> לזכור אותי במחשב הזה</label>
+  <button id="b">כניסה</button>
+  <div class="err" id="e"></div>
+</form></div>
+<script>
+const K='argaz_pw';
+async function openWith(pw){
+  const parts=await Promise.all(['data1.bin','data2.bin'].map(async u=>new Uint8Array(await (await fetch(u)).arrayBuffer())));
+  const buf=new Uint8Array(parts[0].length+parts[1].length); buf.set(parts[0]); buf.set(parts[1],parts[0].length);
+  const salt=buf.slice(0,16), iv=buf.slice(16,28), ct=buf.slice(28);
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:250000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+  const gz=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct); // throws on wrong password
+  const html=await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  return html;
+}
+async function go(pw,fromSaved){
+  const b=document.getElementById('b'), e=document.getElementById('e');
+  b.disabled=true; b.textContent='פותח...'; e.textContent='';
+  let html;
+  try{ html=await openWith(pw); }
+  catch(err){
+    b.disabled=false; b.textContent='כניסה';
+    if(fromSaved){ localStorage.removeItem(K); return; }
+    e.textContent= (err && err.name==='OperationError') ? 'הסיסמה לא נכונה' : 'משהו לא עבד. נסו לרענן את הדף';
+    return;
+  }
+  if(!fromSaved){ if(document.getElementById('rem').checked) localStorage.setItem(K,pw); else localStorage.removeItem(K); }
+  document.open(); document.write(html); document.close();
+}
+document.getElementById('f').addEventListener('submit',ev=>{ev.preventDefault(); go(document.getElementById('pw').value,false);});
+const saved=localStorage.getItem(K); if(saved) go(saved,true);
+</script>
+</body>
+</html>
